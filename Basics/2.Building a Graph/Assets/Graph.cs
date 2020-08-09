@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 
+
 public class Graph : MonoBehaviour
 {
     public Transform pointPrefab;
@@ -28,7 +29,7 @@ public class Graph : MonoBehaviour
 
     private void Update()
     {
-        for (int i=0; i< points.Length; i++)
+        for (int i = 0; i < points.Length; i++)
         {
             Transform point = points[i];
             Vector3 position = point.localPosition;
