@@ -13,20 +13,33 @@ public class MovingSphere : MonoBehaviour
     [SerializeField, Range(0, 5)]
     int maxAirJumps = 0; // 空中跳跃
     [SerializeField, Range(0f, 90f)]
-    float maxGroundAngle = 25f; // 最大地面角
+    float maxGroundAngle = 25f; // 最大地面角度
+    [SerializeField, Range(0, 90)]
+    float maxStairsAngle = 50f; // 最大楼梯角度
     [SerializeField, Range(0f, 100f)]
     float maxSnapSpeed = 100f; // 最大地面捕捉速度
     [SerializeField, Min(0f)]
     float probeDistance = 1f; // 探测距离
+    [SerializeField]
+    LayerMask probeMask = -1;
+    [SerializeField]
+    LayerMask stairsMask = -1;
 
     bool desiredJump; // 是否跳跃
     int groundContactCount; // 接触地面的数量
-    bool OnGround => groundContactCount > 0;
+    int steepContactCount; //陡峭接触点数量
+    bool OnGround => groundContactCount > 0; // 是否接触地面
+    bool OnSteep => steepContactCount > 0; // 是否有陡峭接触点
     int jumpPhase; // 跳跃阶段
     Vector3 velocity, desiredVelocity;
-    float minGroundDotProduct; // 最大地面角法线的y分量
+    float minGroundDotProduct; // 最大地面角度法线的y分量
+    float minStairsDotProduct; // 最大楼梯角度法线的y分量
     Vector3 contactNormal; // 接触点法线
+    Vector3 steepNormal; // 陡峭接触点法线
+
     int stepsSinceLastGrounded; // 离开地面之后的物理帧
+    int stepsSinceLastJump; // 跳跃之后的物理帧
+
     Rigidbody body;
 
 
@@ -39,6 +52,7 @@ public class MovingSphere : MonoBehaviour
     void OnValidate()
     {
         minGroundDotProduct = Mathf.Cos(maxGroundAngle * Mathf.Deg2Rad);
+        minStairsDotProduct = Mathf.Cos(maxStairsAngle * Mathf.Deg2Rad);
     }
 
     void Update()
@@ -77,19 +91,25 @@ public class MovingSphere : MonoBehaviour
     void ClearState()
     {
         groundContactCount = 0;
+        steepContactCount = 0;
         contactNormal = Vector3.zero;
+        steepNormal = Vector3.zero;
     }
 
     // 更新状态
     void UpdateState()
     {
         stepsSinceLastGrounded += 1;
+        stepsSinceLastJump += 1;
         velocity = body.velocity;
-        if (OnGround || SnapToGround())
+        if (OnGround || SnapToGround() || CheckSteepContacts())
         {
             stepsSinceLastGrounded = 0;
             // 重置跳跃阶段
-            jumpPhase = 0;
+            if (stepsSinceLastJump > 1)
+            {
+                jumpPhase = 0;
+            }
             if (groundContactCount > 1)
             {
                 contactNormal.Normalize();
@@ -105,19 +125,40 @@ public class MovingSphere : MonoBehaviour
     // 跳跃
     void Jump()
     {
-        if (OnGround || jumpPhase < maxAirJumps)
+        Vector3 jumpDirection;
+        if (OnGround)
         {
-            jumpPhase += 1;
-            float jumpSpeed = Mathf.Sqrt(-2f * Physics.gravity.y * jumpHeight);
-            float alignedSpeed = Vector3.Dot(velocity, contactNormal);
-            // 限制上跳速度
-            if (alignedSpeed > 0f)
-            {
-                jumpSpeed = Mathf.Max(jumpSpeed - alignedSpeed, 0f);
-            }
-            // 沿法线方向跳跃
-            velocity += contactNormal * jumpSpeed;
+            jumpDirection = contactNormal;
         }
+        else if (OnSteep)
+        {
+            jumpDirection = steepNormal;
+            jumpPhase = 0;
+        }
+        else if (maxAirJumps > 0 & jumpPhase <= maxAirJumps)
+        {
+            if (jumpPhase == 0)
+            {
+                jumpPhase = 1;
+            }
+            jumpDirection = contactNormal;
+        }
+        else
+        {
+            return;
+        }
+        stepsSinceLastJump = 0;
+        jumpPhase += 1;
+        jumpDirection = (jumpDirection + Vector3.up).normalized; // 墙跳时向上偏转，不影响平坦地面跳跃
+        float jumpSpeed = Mathf.Sqrt(-2f * Physics.gravity.y * jumpHeight);
+        float alignedSpeed = Vector3.Dot(velocity, jumpDirection);
+        // 限制上跳速度
+        if (alignedSpeed > 0f)
+        {
+            jumpSpeed = Mathf.Max(jumpSpeed - alignedSpeed, 0f);
+        }
+        // 沿法线方向跳跃
+        velocity += jumpDirection * jumpSpeed;
     }
 
     // 碰撞体进入
@@ -136,14 +177,20 @@ public class MovingSphere : MonoBehaviour
     // 计算碰撞接触点的信息
     void EvaluateCollision(Collision collision)
     {
+        float minDot = GetMinDot(collision.gameObject.layer);
         for (int i = 0; i < collision.contactCount; i++)
         {
             Vector3 normal = collision.GetContact(i).normal;
             // 只要有一个接触点的法线大于阈值，就可以跳跃
-            if (normal.y >= minGroundDotProduct)
+            if (normal.y >= minDot)
             {
                 groundContactCount += 1;
                 contactNormal += normal;
+            }
+            else if (normal.y > -0.01f)
+            {
+                steepContactCount += 1;
+                steepNormal += normal;
             }
         }
     }
@@ -178,21 +225,22 @@ public class MovingSphere : MonoBehaviour
     // 捕捉到地面
     bool SnapToGround()
     {
-        if (stepsSinceLastGrounded > 1)
-        {   // 仅在离开地面后第一个物理帧扑捉一次
+        if (stepsSinceLastGrounded > 1 || stepsSinceLastJump <= 2)
+        {   // 仅在离开地面后第一个物理帧扑捉一次，且跳跃不捕捉
             return false;
         }
         float speed = velocity.magnitude; // 速度的标量
         if (speed > maxSnapSpeed)
         {
+            // 大于一定速度不捕捉
             return false;
         }
-        if (!Physics.Raycast(body.position, Vector3.down, out RaycastHit hit, probeDistance))
+        if (!Physics.Raycast(body.position, Vector3.down, out RaycastHit hit, probeDistance, probeMask))
         {
             // 没有地面交点
             return false;
         }
-        if (hit.normal.y < minGroundDotProduct)
+        if (hit.normal.y < GetMinDot(hit.collider.gameObject.layer))
         {
             // 地面交点角度太大
             return false;
@@ -207,5 +255,27 @@ public class MovingSphere : MonoBehaviour
             velocity = (velocity - hit.normal * dot).normalized * speed;
         }
         return true;
+    }
+
+    // 获取接触点阈值
+    float GetMinDot(int layer)
+    {
+        return (stairsMask & (1 << layer)) == 0 ? minGroundDotProduct : minStairsDotProduct;
+    }
+
+    // 检查陡峭接触点
+    bool CheckSteepContacts()
+    {
+        if (steepContactCount > 1)
+        {
+            steepNormal.Normalize();
+            if (steepNormal.y >= minGroundDotProduct)
+            {
+                groundContactCount = 1;
+                contactNormal = steepNormal;
+                return true;
+            }
+        }
+        return false;
     }
 }
