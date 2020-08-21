@@ -133,6 +133,21 @@ PrefabInstance:
       propertyPath: playerInputSpace
       value: 
       objectReference: {fileID: 517927278}
+    - target: {fileID: 8578333974014420808, guid: b89824758824f4781b50a4cec9a2271e,
+        type: 3}
+      propertyPath: maxAcceleration
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 8578333974014420808, guid: b89824758824f4781b50a4cec9a2271e,
+        type: 3}
+      propertyPath: maxAirAcceleration
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8578333974014420808, guid: b89824758824f4781b50a4cec9a2271e,
+        type: 3}
+      propertyPath: maxGroundAngle
+      value: 40
+      objectReference: {fileID: 0}
     - target: {fileID: 8578333974014420809, guid: b89824758824f4781b50a4cec9a2271e,
         type: 3}
       propertyPath: m_Name
