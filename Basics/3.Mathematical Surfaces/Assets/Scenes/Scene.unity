@@ -167,7 +167,7 @@ MonoBehaviour:
   pointPrefab: {fileID: 3694237234639262258, guid: 3b829c7c6598842838d8927fbdbce922,
     type: 3}
   resolution: 100
-  function: 7
+  function: 0
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
